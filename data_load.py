@@ -12,6 +12,7 @@ import numpy as np
 import tensorflow as tf
 from utils import *
 import codecs
+import glob
 import re
 import os
 import unicodedata
@@ -39,37 +40,15 @@ def load_data(mode="train"):
     char2idx, idx2char = load_vocab()
 
     if mode=="train":
-        if "LJ" in hp.data:
-            # Parse
-            fpaths, text_lengths, texts = [], [], []
-            transcript = os.path.join(hp.data, 'transcript.csv')
-            lines = codecs.open(transcript, 'r', 'utf-8').readlines()
-            for line in lines:
-                fname, _, text = line.strip().split("|")
-
-                fpath = os.path.join(hp.data, "wavs", fname + ".wav")
+        # Parse
+        fpaths, text_lengths, texts = [], [], []
+        trn_files = glob.glob(os.path.join('data_thchs30', 'xmly_yangchenghao_22050', 'archived_early', 'A*', '*.trn'))
+        for trn in trn_files:
+            with open(trn) as f:
+                basename = trn[:-4]
+                fpath = basename + '.wav'
                 fpaths.append(fpath)
-
-                text = text_normalize(text) + "~"  # ~: EOS
-                text = [char2idx[char] for char in text]
-                text_lengths.append(len(text))
-                texts.append(np.array(text, np.int32).tostring())
-
-            return fpaths, text_lengths, texts
-        else: # nick or kate
-            # Parse
-            fpaths, text_lengths, texts = [], [], []
-            transcript = os.path.join(hp.data, 'transcript.csv')
-            lines = codecs.open(transcript, 'r', 'utf-8').readlines()
-            for line in lines:
-                fname, _, text, is_inside_quotes, duration = line.strip().split("|")
-                duration = float(duration)
-                if duration > 10. : continue
-
-                fpath = os.path.join(hp.data, fname)
-                fpaths.append(fpath)
-
-                text += "~"  # ~: EOS
+                text = f.readline().strip()
                 text = [char2idx[char] for char in text]
                 text_lengths.append(len(text))
                 texts.append(np.array(text, np.int32).tostring())
@@ -119,14 +98,13 @@ def get_batch():
         mag.set_shape((None, hp.n_fft//2+1))
 
         # Batching
-        _, (texts, mels, mags, fnames) = tf.contrib.training.bucket_by_sequence_length(
-                                            input_length=text_length,
-                                            tensors=[text, mel, mag, fname],
-                                            batch_size=hp.B,
-                                            bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
-                                            num_threads=8,
-                                            capacity=hp.B*4,
-                                            dynamic_pad=True)
+        seq_len, (texts, mels, mags, fnames) = tf.contrib.training.bucket_by_sequence_length(
+                                               input_length=text_length,
+                                               tensors=[text, mel, mag, fname],
+                                               batch_size=hp.B,
+                                               bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
+                                               num_threads=8,
+                                               capacity=hp.B*4,
+                                               dynamic_pad=True)
 
     return texts, mels, mags, fnames, num_batch
-

@@ -35,13 +35,13 @@ class Hyperparams:
     data = "LJSpeech-1.1"
     # data = "/data/private/voice/kate"
     test_data = 'harvard_sentences.txt'
-    vocab = "_~ abcdefghijklmnopqrstuvwxyz'.?" # _: Padding, ~: EOS.
-    max_N = 180 # Maximum number of characters.
-    max_T = 210 # Maximum number of mel frames.
+    vocab = "_~ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz12345',.?!:;@" # _: Padding, ~: EOS.
+    max_N = 200 # Maximum number of characters.
+    max_T = 1000 # Maximum number of mel frames.
 
     # training scheme
     lr = 0.001 # Initial learning rate.
-    logdir = "logdir/LJ01"
+    logdir = "logdir/mandarin"
     sampledir = 'samples'
     B = 32 # batch size
     num_iterations = 2000000
