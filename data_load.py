@@ -50,7 +50,7 @@ def load_data(mode="train"):
                 fpath = os.path.join(hp.data, "wavs", fname + ".wav")
                 fpaths.append(fpath)
 
-                text = text_normalize(text) + "E"  # E: EOS
+                text = text_normalize(text) + "~"  # ~: EOS
                 text = [char2idx[char] for char in text]
                 text_lengths.append(len(text))
                 texts.append(np.array(text, np.int32).tostring())
@@ -69,7 +69,7 @@ def load_data(mode="train"):
                 fpath = os.path.join(hp.data, fname)
                 fpaths.append(fpath)
 
-                text += "E"  # E: EOS
+                text += "~"  # ~: EOS
                 text = [char2idx[char] for char in text]
                 text_lengths.append(len(text))
                 texts.append(np.array(text, np.int32).tostring())
@@ -79,7 +79,7 @@ def load_data(mode="train"):
     else: # synthesize on unseen test text.
         # Parse
         lines = codecs.open(hp.test_data, 'r', 'utf-8').readlines()[1:]
-        sents = [text_normalize(line.split(" ", 1)[-1]).strip() + "E" for line in lines] # text normalization, E: EOS
+        sents = [text_normalize(line.split(" ", 1)[-1]).strip() + "~" for line in lines] # text normalization, ~: EOS
         texts = np.zeros((len(sents), hp.max_N), np.int32)
         for i, sent in enumerate(sents):
             texts[i, :len(sent)] = [char2idx[char] for char in sent]
@@ -103,7 +103,7 @@ def get_batch():
 
         if hp.prepro:
             def _load_spectrograms(fpath):
-                fname = os.path.basename(fpath)
+                fname = os.path.basename(fpath).decode()
                 mel = "mels/{}".format(fname.replace("wav", "npy"))
                 mag = "mags/{}".format(fname.replace("wav", "npy"))
                 return fname, np.load(mel), np.load(mag)
