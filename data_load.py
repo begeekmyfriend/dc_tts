@@ -39,22 +39,34 @@ def load_data(mode="train"):
     # Load vocabulary
     char2idx, idx2char = load_vocab()
 
-    if mode=="train":
+    if mode=="prepro":
         # Parse
         fpaths, text_lengths, texts = [], [], []
         trn_files = glob.glob(os.path.join('data_thchs30', 'xmly_yangchenghao_22050', 'archived_early', 'A*', '*.trn'))
+        # trn_files = glob.glob(os.path.join('data_thchs30', 'biaobei_48000', '*.trn'))
         for trn in trn_files:
             with open(trn) as f:
-                basename = trn[:-4]
-                fpath = basename + '.wav'
+                fpath = trn[:-4] + '.wav'
                 fpaths.append(fpath)
                 text = f.readline().strip()
                 text = [char2idx[char] for char in text]
                 text_lengths.append(len(text))
                 texts.append(np.array(text, np.int32).tostring())
-
         return fpaths, text_lengths, texts
-
+    elif mode=="train":
+        fpaths, text_lengths, texts = [], [], []
+        files = glob.glob(os.path.join('mels', '*.npy'))
+        for f in files:
+            f = f.split('/')[-1]
+            trn = os.path.join('data_thchs30', 'xmly_yangchenghao_22050', 'archived_early', f[:4], f[:-4] + '.trn')
+            with open(trn) as trn_f:
+                fpath = trn[:-4] + '.wav'
+                fpaths.append(fpath)
+                text = trn_f.readline().strip()
+                text = [char2idx[char] for char in text]
+                text_lengths.append(len(text))
+                texts.append(np.array(text, np.int32).tostring())
+        return fpaths, text_lengths, texts
     else: # synthesize on unseen test text.
         # Parse
         lines = codecs.open(hp.test_data, 'r', 'utf-8').readlines()[1:]
@@ -68,7 +80,7 @@ def get_batch():
     """Loads training data and put them in queues"""
     with tf.device('/cpu:0'):
         # Load data
-        fpaths, text_lengths, texts = load_data() # list
+        fpaths, text_lengths, texts = load_data('train') # list
         maxlen, minlen = max(text_lengths), min(text_lengths)
 
         # Calc total batch count
