@@ -151,6 +151,8 @@ def load_spectrograms(fpath):
     fname = os.path.basename(fpath)
     mel, mag = get_spectrograms(fpath)
     t = mel.shape[0]
+    if t > hp.max_T:
+        return None, None, None
 
     # Marginal padding for reduction shape sync.
     num_paddings = hp.r - (t % hp.r) if t % hp.r != 0 else 0

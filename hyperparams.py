@@ -17,10 +17,10 @@ class Hyperparams:
     hop_length = int(sr * frame_shift)  # samples. =276.
     win_length = int(sr * frame_length)  # samples. =1102.
     n_mels = 80  # Number of Mel banks to generate
-    power = 1.5  # Exponent for amplifying the predicted magnitude
+    power = 1.2  # Exponent for amplifying the predicted magnitude
     n_iter = 50  # Number of inversion iterations
     preemphasis = .97
-    max_db = 100
+    max_db = 120
     ref_db = 20
 
     # Model
@@ -37,7 +37,7 @@ class Hyperparams:
     test_data = 'harvard_sentences.txt'
     vocab = "_~ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz12345',.?!:;@" # _: Padding, ~: EOS.
     max_N = 200 # Maximum number of characters.
-    max_T = 1000 # Maximum number of mel frames.
+    max_T = 900 # Maximum number of mel frames.
 
     # training scheme
     lr = 0.001 # Initial learning rate.
