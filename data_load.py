@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-#/usr/bin/python2
 '''
 By kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
@@ -69,8 +68,9 @@ def load_data(mode="train"):
         return fpaths, text_lengths, texts
     else: # synthesize on unseen test text.
         # Parse
-        lines = codecs.open(hp.test_data, 'r', 'utf-8').readlines()[1:]
-        sents = [text_normalize(line.split(" ", 1)[-1]).strip() + "~" for line in lines] # text normalization, ~: EOS
+        # lines = codecs.open(hp.test_data, 'r', 'utf-8').readlines()[1:]
+        # sents = [text_normalize(line.split(" ", 1)[-1]).strip() + "~" for line in lines] # text normalization, ~: EOS
+        sents = hp.sentences
         texts = np.zeros((len(sents), hp.max_N), np.int32)
         for i, sent in enumerate(sents):
             texts[i, :len(sent)] = [char2idx[char] for char in sent]

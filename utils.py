@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-#/usr/bin/python2
 '''
 By kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
@@ -162,4 +161,3 @@ def load_spectrograms(fpath):
     # Reduction
     mel = mel[::hp.r, :]
     return fname, mel, mag
-

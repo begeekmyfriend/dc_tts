@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# /usr/bin/python2
 '''
 By kyubyong park. kbpark.linguist@gmail.com. 
 https://www.github.com/kyubyong/dc_tts
@@ -16,6 +15,7 @@ from networks import TextEnc, AudioEnc, AudioDec, Attention, SSRN
 import tensorflow as tf
 from utils import *
 import sys
+import os
 
 
 class Graph:
@@ -135,6 +135,8 @@ class Graph:
 
 
 if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
     # argument: 1 or 2. 1 for Text2mel, 2 for SSRN.
     num = int(sys.argv[1])
 
@@ -142,7 +144,19 @@ if __name__ == '__main__':
 
     logdir = hp.logdir + "-" + str(num)
     sv = tf.train.Supervisor(logdir=logdir, save_model_secs=0, global_step=g.global_step)
+
     with sv.managed_session() as sess:
+        # Restore saved model if the user requested it, default = True
+        try:
+            checkpoint_state = tf.train.get_checkpoint_state(logdir)
+            if (checkpoint_state and checkpoint_state.model_checkpoint_path):
+                print('Loading checkpoint {}'.format(checkpoint_state.model_checkpoint_path))
+                sv.saver.restore(sess, checkpoint_state.model_checkpoint_path)
+            else:
+                print('No model to load at {}'.format(logdir))
+        except tf.errors.OutOfRangeError as e:
+            print('Cannot restore checkpoint: {}'.format(e))
+
         while 1:
             for _ in tqdm(range(g.num_batch), total=g.num_batch, ncols=70, leave=False, unit='b'):
                 gs, _ = sess.run([g.global_step, g.train_op])

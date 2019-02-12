@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# /usr/bin/python2
 '''
 By kyubyong park. kbpark.linguist@gmail.com.
 https://www.github.com/kyubyong/dc_tts
@@ -61,9 +60,10 @@ def synthesize():
         for i, mag in enumerate(Z):
             print("Working on file", i+1)
             wav = spectrogram2wav(mag)
-            write(hp.sampledir + "/{}.wav".format(i+1), hp.sr, wav)
+            write(hp.sampledir + "/{:03}.wav".format(i+1), hp.sr, wav)
 
 if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     synthesize()
     print("Done")
 
