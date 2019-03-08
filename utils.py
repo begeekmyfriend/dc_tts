@@ -46,7 +46,7 @@ def get_spectrograms(fpath):
     mag = np.abs(linear)  # (1+n_fft//2, T)
 
     # mel spectrogram
-    mel_basis = librosa.filters.mel(hp.sr, hp.n_fft, hp.n_mels)  # (n_mels, 1+n_fft//2)
+    mel_basis = librosa.filters.mel(hp.sr, hp.n_fft, hp.n_mels, hp.fmin, hp.fmax)  # (n_mels, 1+n_fft//2)
     mel = np.dot(mel_basis, mag)  # (n_mels, t)
 
     # to decibel
@@ -143,21 +143,25 @@ def learning_rate_decay(init_lr, global_step, warmup_steps = 4000.0):
     step = tf.to_float(global_step + 1)
     return init_lr * warmup_steps**0.5 * tf.minimum(step * warmup_steps**-1.5, step**-0.5)
 
-def load_spectrograms(fpath):
+def load_spectrograms(fpath, text_len):
     '''Read the wave file in `fpath`
     and extracts spectrograms'''
 
     fname = os.path.basename(fpath)
     mel, mag = get_spectrograms(fpath)
     t = mel.shape[0]
-    if t > hp.max_T:
-        return None, None, None
 
     # Marginal padding for reduction shape sync.
     num_paddings = hp.r - (t % hp.r) if t % hp.r != 0 else 0
     mel = np.pad(mel, [[0, num_paddings], [0, 0]], mode="constant")
     mag = np.pad(mag, [[0, num_paddings], [0, 0]], mode="constant")
 
+    if mel.shape[0] > hp.max_T or text_len > hp.max_N:
+        return None
+
     # Reduction
     mel = mel[::hp.r, :]
-    return fname, mel, mag
+
+    np.save("mels/{}".format(fname.replace("wav", "npy")), mel)
+    np.save("mags/{}".format(fname.replace("wav", "npy")), mag)
+    return (fname, mel, mag)

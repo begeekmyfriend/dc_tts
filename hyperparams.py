@@ -9,18 +9,20 @@ class Hyperparams:
     prepro = True  # if True, run `python prepro.py` first before running `python train.py`.
     
     # signal processing
-    sr = 22050  # Sampling rate.
+    sr = 16000  # Sampling rate.
     n_fft = 2048  # fft points (samples)
     frame_shift = 0.0125  # seconds
     frame_length = 0.05  # seconds
-    hop_length = int(sr * frame_shift)  # samples. =276.
-    win_length = int(sr * frame_length)  # samples. =1102.
-    n_mels = 80  # Number of Mel banks to generate
+    hop_length = 256# int(sr * frame_shift)  # samples. =276.
+    win_length = 1024# int(sr * frame_length)  # samples. =1102.
+    n_mels = 160  # Number of Mel banks to generate
     power = 1.2  # Exponent for amplifying the predicted magnitude
     n_iter = 50  # Number of inversion iterations
     preemphasis = .97
     max_db = 120
     ref_db = 20
+    fmin = 55
+    fmax = 3000
 
     # Model
     r = 4 # Reduction factor. Do not change this.
@@ -33,7 +35,7 @@ class Hyperparams:
     # data
     vocab = "_~ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz12345',.?!:;@" # _: Padding, ~: EOS.
     max_N = 300 # Maximum number of characters.
-    max_T = 900 # Maximum number of mel frames.
+    max_T = 700 # Maximum number of mel frames.
 
     # training scheme
     lr = 0.001 # Initial learning rate.
