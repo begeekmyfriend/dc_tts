@@ -41,7 +41,7 @@ def load_data(mode="train"):
     if mode=="prepro":
         # Parse
         fpaths, text_lengths, texts = [], [], []
-        trn_files = glob.glob(os.path.join('data_thchs30', 'xmly_yangchenghao_22050', 'archived_early', 'A*', '*.trn'))
+        trn_files = glob.glob(os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_early', 'A*', '*.trn'))
         # trn_files = glob.glob(os.path.join('data_thchs30', 'biaobei_48000', '*.trn'))
         for trn in trn_files:
             with open(trn) as f:
@@ -57,7 +57,7 @@ def load_data(mode="train"):
         files = glob.glob(os.path.join('mels', '*.npy'))
         for f in files:
             f = f.split('/')[-1]
-            trn = os.path.join('data_thchs30', 'xmly_yangchenghao_22050', 'archived_early', f[:4], f[:-4] + '.trn')
+            trn = os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_early', f[:4], f[:-4] + '.trn')
             with open(trn) as trn_f:
                 fpath = trn[:-4] + '.wav'
                 fpaths.append(fpath)
