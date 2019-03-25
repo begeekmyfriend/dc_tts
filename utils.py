@@ -5,112 +5,69 @@ https://www.github.com/kyubyong/dc_tts
 '''
 from __future__ import print_function, division
 
+import pysptk
+import pyworld as vocoder
+import soundfile as sf
 import numpy as np
-import librosa
-import os, copy
+import os
 import matplotlib
 matplotlib.use('pdf')
 import matplotlib.pyplot as plt
-from scipy import signal
 
 from hyperparams import Hyperparams as hp
 import tensorflow as tf
 
-def get_spectrograms(fpath):
-    '''Parse the wave file in `fpath` and
-    Returns normalized melspectrogram and linear spectrogram.
+int16_max = 32768.0
+lf0_bias = 3
+mgc_bias = 3
+bap_bias = 9
+bap_scale = 4
 
-    Args:
-      fpath: A string. The full path of a sound file.
+def save_wav(wav, path):
+    sf.write(path, wav, hp.sr)
 
-    Returns:
-      mel: A 2d array of shape (T, n_mels) and dtype of float32.
-      mag: A 2d array of shape (T, 1+n_fft/2) and dtype of float32.
-    '''
-    # Loading sound file
-    y, sr = librosa.load(fpath, sr=hp.sr)
+def synthesize(lf0, mgc, bap):
+    lf0 = lf0 + lf0_bias
+    mgc = mgc + mgc_bias
+    bap = bap / bap_scale + bap_bias
+    lf0 = np.where(lf0 < 1, 0.0, lf0)
+    f0 = f0_denormalize(lf0)
+    sp = sp_denormalize(mgc)
+    ap = ap_denormalize(bap, lf0)
+    wav = vocoder.synthesize(f0, sp, ap, hp.sr)
+    return wav
 
-    # Trimming
-    y, _ = librosa.effects.trim(y)
+def f0_norm(x):
+    lf0 = np.log(np.where(x == 0.0, 1.0, x)).astype(np.float32)
+    return lf0 - lf0_bias
 
-    # Preemphasis
-    y = np.append(y[0], y[1:] - hp.preemphasis * y[:-1])
+def f0_denorm(x):
+    return np.where(x == 0.0, 0.0, np.exp(x.astype(np.float64)))
 
-    # stft
-    linear = librosa.stft(y=y,
-                          n_fft=hp.n_fft,
-                          hop_length=hp.hop_length,
-                          win_length=hp.win_length)
+def sp_norm(x):
+    sp = int16_max * np.sqrt(x)
+    mgc = pysptk.sptk.mcep(sp.astype(np.float32), order=hp.n_mgc - 1, alpha=hp.mcep_alpha,
+                           maxiter=0, threshold=0.001, etype=1, eps=1.0E-8, min_det=0.0, itype=3)
+    return mgc - mgc_bias
 
-    # magnitude spectrogram
-    mag = np.abs(linear)  # (1+n_fft//2, T)
+def sp_denorm(x):
+    sp = pysptk.sptk.mgc2sp(x.astype(np.float64), order=hp.n_mgc - 1,
+                            alpha=hp.mcep_alpha, gamma=0.0, fftlen=hp.n_fft)
+    return np.square(sp / int16_max)
 
-    # mel spectrogram
-    mel_basis = librosa.filters.mel(hp.sr, hp.n_fft, hp.n_mels, hp.fmin, hp.fmax)  # (n_mels, 1+n_fft//2)
-    mel = np.dot(mel_basis, mag)  # (n_mels, t)
+def ap_norm(x):
+    ap = int16_max * np.sqrt(x)
+    bap = pysptk.sptk.mcep(ap.astype(np.float32), order=hp.n_bap - 1, alpha=hp.mcep_alpha,
+                           maxiter=0, threshold=0.001, etype=1, eps=1.0E-8, min_det=0.0, itype=3)
+    return (bap - bap_bias) * bap_scale
 
-    # to decibel
-    mel = 20 * np.log10(np.maximum(1e-5, mel))
-    mag = 20 * np.log10(np.maximum(1e-5, mag))
-
-    # normalize
-    mel = np.clip((mel - hp.ref_db + hp.max_db) / hp.max_db, 1e-8, 1)
-    mag = np.clip((mag - hp.ref_db + hp.max_db) / hp.max_db, 1e-8, 1)
-
-    # Transpose
-    mel = mel.T.astype(np.float32)  # (T, n_mels)
-    mag = mag.T.astype(np.float32)  # (T, 1+n_fft//2)
-
-    return mel, mag
-
-def spectrogram2wav(mag):
-    '''# Generate wave file from linear magnitude spectrogram
-
-    Args:
-      mag: A numpy array of (T, 1+n_fft//2)
-
-    Returns:
-      wav: A 1-D numpy array.
-    '''
-    # transpose
-    mag = mag.T
-
-    # de-noramlize
-    mag = (np.clip(mag, 0, 1) * hp.max_db) - hp.max_db + hp.ref_db
-
-    # to amplitude
-    mag = np.power(10.0, mag * 0.05)
-
-    # wav reconstruction
-    wav = griffin_lim(mag**hp.power)
-
-    # de-preemphasis
-    wav = signal.lfilter([1], [1, -hp.preemphasis], wav)
-
-    # trim
-    wav, _ = librosa.effects.trim(wav)
-
-    return wav.astype(np.float32)
-
-def griffin_lim(spectrogram):
-    '''Applies Griffin-Lim's raw.'''
-    X_best = copy.deepcopy(spectrogram)
-    for i in range(hp.n_iter):
-        X_t = invert_spectrogram(X_best)
-        est = librosa.stft(X_t, hp.n_fft, hp.hop_length, win_length=hp.win_length)
-        phase = est / np.maximum(1e-8, np.abs(est))
-        X_best = spectrogram * phase
-    X_t = invert_spectrogram(X_best)
-    y = np.real(X_t)
-
-    return y
-
-def invert_spectrogram(spectrogram):
-    '''Applies inverse fft.
-    Args:
-      spectrogram: [1+n_fft//2, t]
-    '''
-    return librosa.istft(spectrogram, hp.hop_length, win_length=hp.win_length, window="hann")
+def ap_denorm(x, lf0):
+    ap = pysptk.sptk.mgc2sp(x.astype(np.float64), order=hp.n_bap - 1,
+                            alpha=hp.mcep_alpha, gamma=0.0, fftlen=hp.n_fft)
+    ap = np.square(ap / int16_max)
+    for i in range(len(lf0)):
+        ap[i] = np.where(lf0[i] == 0, np.zeros(ap.shape[1]), ap[i])
+    return ap
 
 def plot_alignment(alignment, gs, dir=hp.logdir):
     """Plots the alignment.
@@ -143,25 +100,29 @@ def learning_rate_decay(init_lr, global_step, warmup_steps = 4000.0):
     step = tf.to_float(global_step + 1)
     return init_lr * warmup_steps**0.5 * tf.minimum(step * warmup_steps**-1.5, step**-0.5)
 
-def load_spectrograms(fpath, text_len):
+def load_features(fpath, text_len):
     '''Read the wave file in `fpath`
-    and extracts spectrograms'''
+    and extracts world vocoder features'''
 
     fname = os.path.basename(fpath)
-    mel, mag = get_spectrograms(fpath)
-    t = mel.shape[0]
+    wav, _ = sf.read(fpath)
+
+    f0, sp, ap = vocoder.wav2world(wav, hp.sr, hp.n_fft)
 
     # Marginal padding for reduction shape sync.
-    num_paddings = hp.r - (t % hp.r) if t % hp.r != 0 else 0
-    mel = np.pad(mel, [[0, num_paddings], [0, 0]], mode="constant")
-    mag = np.pad(mag, [[0, num_paddings], [0, 0]], mode="constant")
+    # num_paddings = hp.r - (len(f0) % hp.r) if len(f0) % hp.r != 0 else 0
+    # mel = np.pad(mel, [[0, num_paddings], [0, 0]], mode="constant")
+    # mag = np.pad(mag, [[0, num_paddings], [0, 0]], mode="constant")
 
-    if mel.shape[0] > hp.max_T or text_len > hp.max_N:
+    if len(f0) > hp.max_T or text_len > hp.max_N:
         return None
 
-    # Reduction
-    mel = mel[::hp.r, :]
+    # Normalization and reduction
+    lf0 = f0_norm(f0)[::hp.r]
+    mgc = sp_norm(sp)[::hp.r, :]
+    bap = ap_norm(ap)[::hp.r, :]
 
-    np.save("mels/{}".format(fname.replace("wav", "npy")), mel)
-    np.save("mags/{}".format(fname.replace("wav", "npy")), mag)
-    return (fname, mel, mag)
+    np.save("lf0/{}".format(fname.replace("wav", "npy")), lf0)
+    np.save("mgc/{}".format(fname.replace("wav", "npy")), mgc)
+    np.save("bap/{}".format(fname.replace("wav", "npy")), bap)
+    return (fname, lf0, mgc, bap)

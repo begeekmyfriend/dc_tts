@@ -244,8 +244,3 @@ def conv1d_transpose(inputs,
         tensor = tf.layers.dropout(tensor, rate=dropout_rate, training=training)
 
     return tensor
-
-
-
-
-

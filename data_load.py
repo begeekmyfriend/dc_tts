@@ -41,7 +41,7 @@ def load_data(mode="train"):
     if mode=="prepro":
         # Parse
         fpaths, text_lengths, texts = [], [], []
-        trn_files = glob.glob(os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_early', 'A*', '*.trn'))
+        trn_files = glob.glob(os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_good', 'A*', '*.trn'))
         # trn_files = glob.glob(os.path.join('data_thchs30', 'biaobei_48000', '*.trn'))
         for trn in trn_files:
             with open(trn) as f:
@@ -54,10 +54,10 @@ def load_data(mode="train"):
         return fpaths, text_lengths, texts
     elif mode=="train":
         fpaths, text_lengths, texts = [], [], []
-        files = glob.glob(os.path.join('mels', '*.npy'))
+        files = glob.glob(os.path.join('lf0', '*.npy'))
         for f in files:
             f = f.split('/')[-1]
-            trn = os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_early', f[:4], f[:-4] + '.trn')
+            trn = os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_good', f[:4], f[:-4] + '.trn')
             with open(trn) as trn_f:
                 fpath = trn[:-4] + '.wav'
                 fpaths.append(fpath)
@@ -93,30 +93,32 @@ def get_batch():
         text = tf.decode_raw(text, tf.int32)  # (None,)
 
         if hp.prepro:
-            def _load_spectrograms(fpath):
+            def _load_features(fpath):
                 fname = os.path.basename(fpath).decode()
-                mel = "mels/{}".format(fname.replace("wav", "npy"))
-                mag = "mags/{}".format(fname.replace("wav", "npy"))
-                return fname, np.load(mel), np.load(mag)
+                lf0 = "lf0/{}".format(fname.replace("wav", "npy"))
+                mgc = "mgc/{}".format(fname.replace("wav", "npy"))
+                bap = "bap/{}".format(fname.replace("wav", "npy"))
+                return fname, np.load(lf0), np.load(mgc), np.load(bap)
 
-            fname, mel, mag = tf.py_func(_load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])
+            fname, lf0, mgc, bap = tf.py_func(_load_features, [fpath], [tf.string, tf.float32, tf.float32, tf.float32])
         else:
-            fname, mel, mag = tf.py_func(load_spectrograms, [fpath], [tf.string, tf.float32, tf.float32])  # (None, n_mels)
+            fname, lf0, mgc, bap = tf.py_func(load_features, [fpath], [tf.string, tf.float32, tf.float32, tf.float32])
 
         # Add shape information
         fname.set_shape(())
         text.set_shape((None,))
-        mel.set_shape((None, hp.n_mels))
-        mag.set_shape((None, hp.n_fft//2+1))
+        lf0.set_shape((None,))
+        mgc.set_shape((None, hp.n_mgc))
+        bap.set_shape((None, hp.n_bap))
 
         # Batching
-        seq_len, (texts, mels, mags, fnames) = tf.contrib.training.bucket_by_sequence_length(
-                                               input_length=text_length,
-                                               tensors=[text, mel, mag, fname],
-                                               batch_size=hp.B,
-                                               bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
-                                               num_threads=8,
-                                               capacity=hp.B*4,
-                                               dynamic_pad=True)
+        seq_len, (texts, lf0s, mgcs, baps, fnames) = tf.contrib.training.bucket_by_sequence_length(
+                                                     input_length=text_length,
+                                                     tensors=[text, lf0, mgc, bap, fname],
+                                                     batch_size=hp.B,
+                                                     bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
+                                                     num_threads=8,
+                                                     capacity=hp.B*4,
+                                                     dynamic_pad=True)
 
-    return texts, mels, mags, fnames, num_batch
+    return texts, lf0s, mgcs, baps, fnames, num_batch

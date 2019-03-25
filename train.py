@@ -19,10 +19,9 @@ import os
 
 
 class Graph:
-    def __init__(self, num=1, mode="train"):
+    def __init__(self, mode="train"):
         '''
         Args:
-          num: Either 1 or 2. 1 for Text2Mel 2 for SSRN.
           mode: Either "train" or "synthesize".
         '''
         # Load vocabulary
@@ -33,89 +32,68 @@ class Graph:
 
         # Graph
         # Data Feeding
-        ## L: Text. (B, N), int32
-        ## mels: Reduced melspectrogram. (B, T/r, n_mels) float32
-        ## mags: Magnitude. (B, T, n_fft//2+1) float32
+        ## texts (B, N), int32
+        ## lf0s: (B, T//r, n_lf0) float32
+        ## mgcs: (B, T//r, n_mgc) float32
+        ## baps: (B, T//r, n_bap) float32
+        n_features = hp.n_lf0 + hp.n_mgc + hp.n_bap
         if mode=="train":
-            self.L, self.mels, self.mags, self.fnames, self.num_batch = get_batch()
+            self.texts, self.lf0s, self.mgcs, self.baps, self.fnames, self.num_batch = get_batch()
+            self.features = tf.concat([tf.expand_dims(self.lf0s, axis=-1), self.mgcs, self.baps], axis=-1)
             self.prev_max_attentions = tf.ones(shape=(hp.B,), dtype=tf.int32)
             self.gts = tf.convert_to_tensor(guided_attention())
         else:  # Synthesize
-            self.L = tf.placeholder(tf.int32, shape=(None, None))
-            self.mels = tf.placeholder(tf.float32, shape=(None, None, hp.n_mels))
+            self.texts = tf.placeholder(tf.int32, shape=(None, None))
+            self.features = tf.placeholder(tf.float32, shape=(None, None, n_features))
             self.prev_max_attentions = tf.placeholder(tf.int32, shape=(None,))
 
-        if num==1 or (not training):
-            with tf.variable_scope("Text2Mel"):
-                # Get S or decoder inputs. (B, T//r, n_mels)
-                self.S = tf.concat((tf.zeros_like(self.mels[:, :1, :]), self.mels[:, :-1, :]), 1)
+        with tf.variable_scope("Text2Mel"):
+            # Get S or decoder inputs. (B, T//r, n_features)
+            self.S = tf.concat((tf.zeros_like(self.features[:, :1, :]), self.features[:, :-1, :]), 1)
 
-                # Networks
-                with tf.variable_scope("TextEnc"):
-                    self.K, self.V = TextEnc(self.L, training=training)  # (N, Tx, e)
+            # Networks
+            with tf.variable_scope("TextEnc"):
+                self.K, self.V = TextEnc(self.texts, training=training)  # (N, Tx, e)
 
-                with tf.variable_scope("AudioEnc"):
-                    self.Q = AudioEnc(self.S, training=training)
+            with tf.variable_scope("AudioEnc"):
+                self.Q = AudioEnc(self.S, training=training)
 
-                with tf.variable_scope("Attention"):
-                    # R: (B, T/r, 2d)
-                    # alignments: (B, N, T/r)
-                    # max_attentions: (B,)
-                    self.R, self.alignments, self.max_attentions = Attention(self.Q, self.K, self.V,
-                                                                             mononotic_attention=(not training),
-                                                                             prev_max_attentions=self.prev_max_attentions)
-                with tf.variable_scope("AudioDec"):
-                    self.Y_logits, self.Y = AudioDec(self.R, training=training) # (B, T/r, n_mels)
-        else:  # num==2 & training. Note that during training,
-            # the ground truth melspectrogram values are fed.
-            with tf.variable_scope("SSRN"):
-                self.Z_logits, self.Z = SSRN(self.mels, training=training)
-
-        if not training:
-            # During inference, the predicted melspectrogram values are fed.
-            with tf.variable_scope("SSRN"):
-                self.Z_logits, self.Z = SSRN(self.Y, training=training)
+            with tf.variable_scope("Attention"):
+                # R: (B, T/r, 2d)
+                # alignments: (B, N, T/r)
+                # max_attentions: (B,)
+                self.R, self.alignments, self.max_attentions = Attention(self.Q, self.K, self.V,
+                                                                         mononotic_attention=(not training),
+                                                                         prev_max_attentions=self.prev_max_attentions)
+            with tf.variable_scope("AudioDec"):
+                self.Y_logits, self.Y = AudioDec(self.R, training=training) # (B, T/r, n_features)
 
         with tf.variable_scope("gs"):
             self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
         if training:
-            if num==1: # Text2Mel
-                # mel L1 loss
-                self.loss_mels = tf.reduce_mean(tf.abs(self.Y - self.mels))
+            # Text2Mel
+            # L1 loss
+            self.loss_features = tf.reduce_mean(tf.abs(self.Y - self.features))
 
-                # mel binary divergence loss
-                self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.mels))
+            # binary divergence loss
+            self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.features))
 
-                # guided_attention loss
-                self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T]
-                self.attention_masks = tf.to_float(tf.not_equal(self.A, -1))
-                self.loss_att = tf.reduce_sum(tf.abs(self.A * self.gts) * self.attention_masks)
-                self.mask_sum = tf.reduce_sum(self.attention_masks)
-                self.loss_att /= self.mask_sum
+            # guided_attention loss
+            self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T]
+            self.attention_masks = tf.to_float(tf.not_equal(self.A, -1))
+            self.loss_att = tf.reduce_sum(tf.abs(self.A * self.gts) * self.attention_masks)
+            self.mask_sum = tf.reduce_sum(self.attention_masks)
+            self.loss_att /= self.mask_sum
 
-                # total loss
-                self.loss = self.loss_mels + self.loss_bd1 + self.loss_att
+            # total loss
+            self.loss = self.loss_features + self.loss_bd1 + self.loss_att
 
-                tf.summary.scalar('train/loss_mels', self.loss_mels)
-                tf.summary.scalar('train/loss_bd1', self.loss_bd1)
-                tf.summary.scalar('train/loss_att', self.loss_att)
-                tf.summary.image('train/mel_gt', tf.expand_dims(tf.transpose(self.mels[:1], [0, 2, 1]), -1))
-                tf.summary.image('train/mel_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
-            else: # SSRN
-                # mag L1 loss
-                self.loss_mags = tf.reduce_mean(tf.abs(self.Z - self.mags))
-
-                # mag binary divergence loss
-                self.loss_bd2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Z_logits, labels=self.mags))
-
-                # total loss
-                self.loss = self.loss_mags + self.loss_bd2
-
-                tf.summary.scalar('train/loss_mags', self.loss_mags)
-                tf.summary.scalar('train/loss_bd2', self.loss_bd2)
-                tf.summary.image('train/mag_gt', tf.expand_dims(tf.transpose(self.mags[:1], [0, 2, 1]), -1))
-                tf.summary.image('train/mag_hat', tf.expand_dims(tf.transpose(self.Z[:1], [0, 2, 1]), -1))
+            tf.summary.scalar('train/loss_features', self.loss_features)
+            tf.summary.scalar('train/loss_bd1', self.loss_bd1)
+            tf.summary.scalar('train/loss_att', self.loss_att)
+            tf.summary.image('train/feature_gt', tf.expand_dims(tf.transpose(self.features[:1], [0, 2, 1]), -1))
+            tf.summary.image('train/feature_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
 
             # Training Scheme
             self.lr = learning_rate_decay(hp.lr, self.global_step)
@@ -137,12 +115,9 @@ class Graph:
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-    # argument: 1 or 2. 1 for Text2mel, 2 for SSRN.
-    num = int(sys.argv[1])
+    g = Graph(); print("Training Graph loaded")
 
-    g = Graph(num=num); print("Training Graph loaded")
-
-    logdir = hp.logdir + "-" + str(num)
+    logdir = hp.logdir
     sv = tf.train.Supervisor(logdir=logdir, save_model_secs=0, global_step=g.global_step)
 
     with sv.managed_session() as sess:
@@ -165,10 +140,9 @@ if __name__ == '__main__':
                 if gs % 1000 == 0:
                     sv.saver.save(sess, logdir + '/model_gs_{}'.format(str(gs // 1000).zfill(3) + "k"))
 
-                    if num==1:
-                        # plot alignment
-                        alignments = sess.run(g.alignments)
-                        plot_alignment(alignments[0], str(gs // 1000).zfill(3) + "k", logdir)
+                    # plot alignment
+                    alignments = sess.run(g.alignments)
+                    plot_alignment(alignments[0], str(gs // 1000).zfill(3) + "k", logdir)
 
                 # break
                 if gs > hp.num_iterations: break

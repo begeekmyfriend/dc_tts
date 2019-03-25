@@ -10,19 +10,13 @@ class Hyperparams:
     
     # signal processing
     sr = 16000  # Sampling rate.
-    n_fft = 2048  # fft points (samples)
-    frame_shift = 0.0125  # seconds
-    frame_length = 0.05  # seconds
-    hop_length = 256# int(sr * frame_shift)  # samples. =276.
-    win_length = 1024# int(sr * frame_length)  # samples. =1102.
-    n_mels = 160  # Number of Mel banks to generate
-    power = 1.2  # Exponent for amplifying the predicted magnitude
-    n_iter = 50  # Number of inversion iterations
-    preemphasis = .97
-    max_db = 120
-    ref_db = 20
-    fmin = 55
-    fmax = 3000
+    n_fft = 1024  # fft points (samples)
+    n_lf0 = 1
+    n_mgc = 60
+    n_bap = 1
+    mcep_alpha = 0.58
+    frame_shift = 0.015  # seconds
+    frame_length = 0.06  # seconds
 
     # Model
     r = 4 # Reduction factor. Do not change this.
@@ -41,7 +35,7 @@ class Hyperparams:
     lr = 0.001 # Initial learning rate.
     logdir = "logdir/mandarin"
     sampledir = 'samples'
-    B = 32 # batch size
+    B = 48 # batch size
     num_iterations = 2000000
 
     # test_data
