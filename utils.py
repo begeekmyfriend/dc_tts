@@ -26,14 +26,14 @@ bap_scale = 4
 def save_wav(wav, path):
     sf.write(path, wav, hp.sr)
 
-def synthesize(lf0, mgc, bap):
+def world_synthesize(lf0, mgc, bap):
     lf0 = lf0 + lf0_bias
     mgc = mgc + mgc_bias
     bap = bap / bap_scale + bap_bias
     lf0 = np.where(lf0 < 1, 0.0, lf0)
-    f0 = f0_denormalize(lf0)
-    sp = sp_denormalize(mgc)
-    ap = ap_denormalize(bap, lf0)
+    f0 = f0_denorm(lf0)
+    sp = sp_denorm(mgc)
+    ap = ap_denorm(bap, lf0)
     wav = vocoder.synthesize(f0, sp, ap, hp.sr)
     return wav
 

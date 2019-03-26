@@ -30,12 +30,12 @@ def synthesize():
         # Restore parameters
         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'Text2Mel')
         saver = tf.train.Saver(var_list=var_list)
-        saver.restore(sess, tf.train.latest_checkpoint(hp.logdir + "-1"))
+        saver.restore(sess, tf.train.latest_checkpoint(hp.logdir))
         print("Text2Mel Restored!")
 
         # Feed Forward
         n_features = hp.n_lf0 + hp.n_mgc + hp.n_bap
-        Y = np.zeros((len(texts), hp.max_T, hp.n_features), np.float32)
+        Y = np.zeros((len(texts), hp.max_T, n_features), np.float32)
         prev_max_attentions = np.zeros((len(texts),), np.int32)
         for j in tqdm(range(hp.max_T)):
             _gs, _Y, _max_attentions, _alignments = \
@@ -48,12 +48,12 @@ def synthesize():
 
         # Generate wav files
         if not os.path.exists(hp.sampledir): os.makedirs(hp.sampledir)
-        for i, features in enumerate(Y):
+        for i, feature in enumerate(Y):
             print("Working on file", i+1)
-            lf0 = features[:, :, :hp.n_lf0]
-            mgc = features[:, :, hp.n_lf0 : hp.n_mgc]
-            bap = features[:, :, hp.n_lf0 + hp.n_mgc : hp.n_bap]
-            wav = synthesize(mag)
+            lf0 = np.squeeze(feature[:, :hp.n_lf0])
+            mgc = feature[:, hp.n_lf0 : hp.n_mgc]
+            bap = feature[:, hp.n_lf0 + hp.n_mgc : hp.n_bap]
+            wav = world_synthesize(lf0, mgc, bap)
             save_wav(wav, hp.sampledir + "/{:03}.wav".format(i+1))
 
 if __name__ == '__main__':
