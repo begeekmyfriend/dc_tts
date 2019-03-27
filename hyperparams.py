@@ -11,11 +11,12 @@ class Hyperparams:
     # signal processing
     sr = 16000  # Sampling rate.
     n_fft = 1024  # fft points (samples)
-    n_lf0 = 1
     n_mgc = 60
+    n_lf0 = 1
+    n_vuv = 1
     n_bap = 1
-    mcep_alpha = 0.58
-    frame_shift = 0.015  # seconds
+    use_harvest = True
+    frame_period = 15  # seconds
     frame_length = 0.06  # seconds
 
     # Model

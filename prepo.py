@@ -15,9 +15,7 @@ from data_load import load_data
 import numpy as np
 
 # Load data
-if not os.path.exists("lf0"): os.mkdir("lf0")
-if not os.path.exists("mgc"): os.mkdir("mgc")
-if not os.path.exists("bap"): os.mkdir("bap")
+if not os.path.exists("features"): os.mkdir("features")
 
 fpaths, text_lens, _ = load_data('prepro')
 futures = []
@@ -29,9 +27,9 @@ for i, fpath in enumerate(fpaths):
 
 results = [future.result() for future in tqdm(futures) if future.result() is not None]
 n_frames = sum([len(res[1]) for res in results])
-timesteps = n_frames * hp.frame_shift
+timesteps = n_frames * hp.frame_period
 hours = timesteps / 3600
 print('Write ({} clips({:.2f} hours)'.format(len(results), hours))
 print('Max input length (text chars): {}'.format(max(text_lens)))
 print('Max mel frames length: {}'.format(max(len(res[1]) for res in results)))
-print('Max audio timesteps length: {}'.format(max(int(len(res[1]) * hp.frame_shift) for res in results)))
+print('Max audio timesteps length: {}'.format(max(int(len(res[1]) * hp.frame_period) for res in results)))

@@ -34,7 +34,7 @@ def synthesize():
         print("Text2Mel Restored!")
 
         # Feed Forward
-        n_features = hp.n_lf0 + hp.n_mgc + hp.n_bap
+        n_features = hp.n_mgc + hp.n_lf0 + hp.n_vuv + hp.n_bap
         Y = np.zeros((len(texts), hp.max_T, n_features), np.float32)
         prev_max_attentions = np.zeros((len(texts),), np.int32)
         for j in tqdm(range(hp.max_T)):
@@ -47,13 +47,12 @@ def synthesize():
             prev_max_attentions = _max_attentions[:, j]
 
         # Generate wav files
-        if not os.path.exists(hp.sampledir): os.makedirs(hp.sampledir)
+        if not os.path.exists(hp.sampledir):
+            os.makedirs(hp.sampledir)
+
         for i, feature in enumerate(Y):
             print("Working on file", i+1)
-            lf0 = np.squeeze(feature[:, :hp.n_lf0])
-            mgc = feature[:, hp.n_lf0 : hp.n_mgc]
-            bap = feature[:, hp.n_lf0 + hp.n_mgc : hp.n_bap]
-            wav = world_synthesize(lf0, mgc, bap)
+            wav = world_synthesize(feature)
             save_wav(wav, hp.sampledir + "/{:03}.wav".format(i+1))
 
 if __name__ == '__main__':

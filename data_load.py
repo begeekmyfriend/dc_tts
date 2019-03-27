@@ -54,7 +54,7 @@ def load_data(mode="train"):
         return fpaths, text_lengths, texts
     elif mode=="train":
         fpaths, text_lengths, texts = [], [], []
-        files = glob.glob(os.path.join('lf0', '*.npy'))
+        files = glob.glob(os.path.join('features', '*.npy'))
         for f in files:
             f = f.split('/')[-1]
             trn = os.path.join('data_thchs30', 'xmly_yangchenghao_16000', 'archived_good', f[:4], f[:-4] + '.trn')
@@ -95,30 +95,26 @@ def get_batch():
         if hp.prepro:
             def _load_features(fpath):
                 fname = os.path.basename(fpath).decode()
-                lf0 = "lf0/{}".format(fname.replace("wav", "npy"))
-                mgc = "mgc/{}".format(fname.replace("wav", "npy"))
-                bap = "bap/{}".format(fname.replace("wav", "npy"))
-                return fname, np.load(lf0), np.load(mgc), np.load(bap)
+                feature = "features/{}".format(fname.replace("wav", "npy"))
+                return fname, np.load(feature)
 
-            fname, lf0, mgc, bap = tf.py_func(_load_features, [fpath], [tf.string, tf.float32, tf.float32, tf.float32])
+            fname, feature = tf.py_func(_load_features, [fpath], [tf.string, tf.float32])
         else:
-            fname, lf0, mgc, bap = tf.py_func(load_features, [fpath], [tf.string, tf.float32, tf.float32, tf.float32])
+            fname, feature = tf.py_func(load_features, [fpath], [tf.string, tf.float32])
 
         # Add shape information
         fname.set_shape(())
         text.set_shape((None,))
-        lf0.set_shape((None,))
-        mgc.set_shape((None, hp.n_mgc))
-        bap.set_shape((None, hp.n_bap))
+        feature.set_shape((None, hp.n_mgc + hp.n_lf0 + hp.n_vuv + hp.n_bap))
 
         # Batching
-        seq_len, (texts, lf0s, mgcs, baps, fnames) = tf.contrib.training.bucket_by_sequence_length(
-                                                     input_length=text_length,
-                                                     tensors=[text, lf0, mgc, bap, fname],
-                                                     batch_size=hp.B,
-                                                     bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
-                                                     num_threads=8,
-                                                     capacity=hp.B*4,
-                                                     dynamic_pad=True)
+        seq_len, (texts, features, fnames) = tf.contrib.training.bucket_by_sequence_length(
+                                             input_length=text_length,
+                                             tensors=[text, feature, fname],
+                                             batch_size=hp.B,
+                                             bucket_boundaries=[i for i in range(minlen + 1, maxlen - 1, 20)],
+                                             num_threads=8,
+                                             capacity=hp.B*4,
+                                             dynamic_pad=True)
 
-    return texts, lf0s, mgcs, baps, fnames, num_batch
+    return texts, features, fnames, num_batch

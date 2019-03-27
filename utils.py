@@ -6,7 +6,7 @@ https://www.github.com/kyubyong/dc_tts
 from __future__ import print_function, division
 
 import pysptk
-import pyworld as vocoder
+import pyworld
 import soundfile as sf
 import numpy as np
 import os
@@ -17,57 +17,34 @@ import matplotlib.pyplot as plt
 from hyperparams import Hyperparams as hp
 import tensorflow as tf
 
-int16_max = 32768.0
-lf0_bias = 3
-mgc_bias = 3
-bap_bias = 9
-bap_scale = 4
-
 def save_wav(wav, path):
     sf.write(path, wav, hp.sr)
 
-def world_synthesize(lf0, mgc, bap):
-    lf0 = lf0 + lf0_bias
-    mgc = mgc + mgc_bias
-    bap = bap / bap_scale + bap_bias
-    lf0 = np.where(lf0 < 1, 0.0, lf0)
-    f0 = f0_denorm(lf0)
-    sp = sp_denorm(mgc)
-    ap = ap_denorm(bap, lf0)
-    wav = vocoder.synthesize(f0, sp, ap, hp.sr)
-    return wav
+def world_synthesize(feature):
+    mgc_idx = 0
+    lf0_idx = mgc_idx + hp.n_mgc
+    vuv_idx = lf0_idx + hp.n_lf0
+    bap_idx = vuv_idx + hp.n_vuv
 
-def f0_norm(x):
-    lf0 = np.log(np.where(x == 0.0, 1.0, x)).astype(np.float32)
-    return lf0 - lf0_bias
+    mgc = feature[:, mgc_idx : mgc_idx + hp.n_mgc]
+    lf0 = feature[:, lf0_idx : lf0_idx + hp.n_lf0]
+    vuv = feature[:, vuv_idx : vuv_idx + hp.n_vuv]
+    bap = feature[:, bap_idx : bap_idx + hp.n_bap]
 
-def f0_denorm(x):
-    return np.where(x == 0.0, 0.0, np.exp(x.astype(np.float64)))
+    fs = hp.sr
+    alpha = pysptk.util.mcepalpha(fs)
+    fftlen = fftlen = pyworld.get_cheaptrick_fft_size(fs)
 
-def sp_norm(x):
-    sp = int16_max * np.sqrt(x)
-    mgc = pysptk.sptk.mcep(sp.astype(np.float32), order=hp.n_mgc - 1, alpha=hp.mcep_alpha,
-                           maxiter=0, threshold=0.001, etype=1, eps=1.0E-8, min_det=0.0, itype=3)
-    return mgc - mgc_bias
+    spectrogram = pysptk.mc2sp(mgc, fftlen=fftlen, alpha=alpha)
+    aperiodicity = pyworld.decode_aperiodicity(bap.astype(np.float64), fs, fftlen)
+    f0 = lf0.copy()
+    f0[vuv < 0.5] = 0
+    f0[np.nonzero(f0)] = np.exp(f0[np.nonzero(f0)])
 
-def sp_denorm(x):
-    sp = pysptk.sptk.mgc2sp(x.astype(np.float64), order=hp.n_mgc - 1,
-                            alpha=hp.mcep_alpha, gamma=0.0, fftlen=hp.n_fft)
-    return np.square(sp / int16_max)
-
-def ap_norm(x):
-    ap = int16_max * np.sqrt(x)
-    bap = pysptk.sptk.mcep(ap.astype(np.float32), order=hp.n_bap - 1, alpha=hp.mcep_alpha,
-                           maxiter=0, threshold=0.001, etype=1, eps=1.0E-8, min_det=0.0, itype=3)
-    return (bap - bap_bias) * bap_scale
-
-def ap_denorm(x, lf0):
-    ap = pysptk.sptk.mgc2sp(x.astype(np.float64), order=hp.n_bap - 1,
-                            alpha=hp.mcep_alpha, gamma=0.0, fftlen=hp.n_fft)
-    ap = np.square(ap / int16_max)
-    for i in range(len(lf0)):
-        ap[i] = np.where(lf0[i] == 0, np.zeros(ap.shape[1]), ap[i])
-    return ap
+    return pyworld.synthesize(f0.flatten().astype(np.float64),
+                              spectrogram.astype(np.float64),
+                              aperiodicity.astype(np.float64),
+                              fs, hp.frame_period)
 
 def plot_alignment(alignment, gs, dir=hp.logdir):
     """Plots the alignment.
@@ -89,10 +66,12 @@ def plot_alignment(alignment, gs, dir=hp.logdir):
 
 def guided_attention(g=0.2):
     '''Guided attention. Refer to page 3 on the paper.'''
-    W = np.zeros((hp.max_N, hp.max_T), dtype=np.float32)
+    N = hp.max_N
+    T = hp.max_T // hp.r
+    W = np.zeros((N, T), dtype=np.float32)
     for n_pos in range(W.shape[0]):
         for t_pos in range(W.shape[1]):
-            W[n_pos, t_pos] = 1 - np.exp(-(t_pos / float(hp.max_T) - n_pos / float(hp.max_N)) ** 2 / (2 * g * g))
+            W[n_pos, t_pos] = 1 - np.exp(-(t_pos / float(T) - n_pos / float(N)) ** 2 / (2 * g * g))
     return W
 
 def learning_rate_decay(init_lr, global_step, warmup_steps = 4000.0):
@@ -103,26 +82,49 @@ def learning_rate_decay(init_lr, global_step, warmup_steps = 4000.0):
 def load_features(fpath, text_len):
     '''Read the wave file in `fpath`
     and extracts world vocoder features'''
-
-    fname = os.path.basename(fpath)
-    wav, _ = sf.read(fpath)
-
-    f0, sp, ap = vocoder.wav2world(wav, hp.sr, hp.n_fft)
-
-    # Marginal padding for reduction shape sync.
-    # num_paddings = hp.r - (len(f0) % hp.r) if len(f0) % hp.r != 0 else 0
-    # mel = np.pad(mel, [[0, num_paddings], [0, 0]], mode="constant")
-    # mag = np.pad(mag, [[0, num_paddings], [0, 0]], mode="constant")
+    wav, fs = sf.read(fpath)
+    if hp.use_harvest:
+        f0, timeaxis = pyworld.harvest(wav, fs, frame_period=hp.frame_period, f0_floor=hp.f0_floor, f0_ceil=hp.f0_ceil)
+    else:
+        f0, timeaxis = pyworld.dio(wav, fs, frame_period=hp.frame_period, f0_floor=hp.f0_floor, f0_ceil=hp.f0_ceil)
+        f0 = pyworld.stonemask(wav, f0, timeaxis, fs)
 
     if len(f0) > hp.max_T or text_len > hp.max_N:
         return None
 
-    # Normalization and reduction
-    lf0 = f0_norm(f0)[::hp.r]
-    mgc = sp_norm(sp)[::hp.r, :]
-    bap = ap_norm(ap)[::hp.r, :]
+    spectrogram = pyworld.cheaptrick(wav, f0, timeaxis, fs)
+    aperiodicity = pyworld.d4c(wav, f0, timeaxis, fs)
+    bap = pyworld.code_aperiodicity(aperiodicity, fs)
+    alpha = pysptk.util.mcepalpha(fs)
+    mgc = pysptk.sp2mc(spectrogram, order=hp.n_mgc - 1, alpha=alpha)
+    f0 = f0[:, None]
+    lf0 = f0.copy()
+    nonzero_indices = np.nonzero(f0)
+    lf0[nonzero_indices] = np.log(f0[nonzero_indices])
+    if hp.use_harvest:
+        # https://github.com/mmorise/World/issues/35#issuecomment-306521887
+        vuv = (aperiodicity[:, 0] < 0.5).astype(np.float32)[:, None]
+    else:
+        vuv = (lf0 != 0).astype(np.float32)
+    # lf0 = P.interp1d(lf0, kind=hp.f0_interpolation_kind)
 
-    np.save("lf0/{}".format(fname.replace("wav", "npy")), lf0)
-    np.save("mgc/{}".format(fname.replace("wav", "npy")), mgc)
-    np.save("bap/{}".format(fname.replace("wav", "npy")), bap)
-    return (fname, lf0, mgc, bap)
+    # Parameter trajectory smoothing
+    # if hp.mod_spec_smoothing:
+    #     hop_length = int(fs * (hp.frame_period * 0.001))
+    #     modfs = fs / hop_length
+    #     mgc = P.modspec_smoothing(
+    #     mgc, modfs, cutoff=hp.mod_spec_smoothing_cutoff)
+
+    # mgc = P.delta_features(mgc, hp.windows)
+    # lf0 = P.delta_features(lf0, hp.windows)
+    # bap = P.delta_features(bap, hp.windows)
+
+    features = np.hstack((mgc, lf0, vuv, bap))
+
+    # Normalization and reduction
+    features = features.astype(np.float32)[::hp.r, :]
+
+    fname = os.path.basename(fpath)
+    np.save("features/{}".format(fname.replace("wav", "npy")), features)
+
+    return (fname, features)

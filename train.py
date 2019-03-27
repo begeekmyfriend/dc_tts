@@ -33,13 +33,10 @@ class Graph:
         # Graph
         # Data Feeding
         ## texts (B, N), int32
-        ## lf0s: (B, T//r, n_lf0) float32
-        ## mgcs: (B, T//r, n_mgc) float32
-        ## baps: (B, T//r, n_bap) float32
-        n_features = hp.n_lf0 + hp.n_mgc + hp.n_bap
+        ## features: (B, T//r, n_features) float32
+        n_features = hp.n_mgc + hp.n_lf0 + hp.n_vuv + hp.n_bap
         if mode=="train":
-            self.texts, self.lf0s, self.mgcs, self.baps, self.fnames, self.num_batch = get_batch()
-            self.features = tf.concat([tf.expand_dims(self.lf0s, axis=-1), self.mgcs, self.baps], axis=-1)
+            self.texts, self.features, self.fnames, self.num_batch = get_batch()
             self.prev_max_attentions = tf.ones(shape=(hp.B,), dtype=tf.int32)
             self.gts = tf.convert_to_tensor(guided_attention())
         else:  # Synthesize
@@ -80,7 +77,9 @@ class Graph:
             self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.features))
 
             # guided_attention loss
-            self.A = tf.pad(self.alignments, [(0, 0), (0, hp.max_N), (0, hp.max_T)], mode="CONSTANT", constant_values=-1.)[:, :hp.max_N, :hp.max_T]
+            N = hp.max_N
+            T = hp.max_T // hp.r
+            self.A = tf.pad(self.alignments, [(0, 0), (0, N), (0, T)], mode="CONSTANT", constant_values=-1.)[:, :N, :T]
             self.attention_masks = tf.to_float(tf.not_equal(self.A, -1))
             self.loss_att = tf.reduce_sum(tf.abs(self.A * self.gts) * self.attention_masks)
             self.mask_sum = tf.reduce_sum(self.attention_masks)
