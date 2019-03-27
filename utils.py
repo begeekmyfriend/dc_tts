@@ -84,9 +84,9 @@ def load_features(fpath, text_len):
     and extracts world vocoder features'''
     wav, fs = sf.read(fpath)
     if hp.use_harvest:
-        f0, timeaxis = pyworld.harvest(wav, fs, frame_period=hp.frame_period, f0_floor=hp.f0_floor, f0_ceil=hp.f0_ceil)
+        f0, timeaxis = pyworld.harvest(wav, fs, frame_period=hp.frame_period)
     else:
-        f0, timeaxis = pyworld.dio(wav, fs, frame_period=hp.frame_period, f0_floor=hp.f0_floor, f0_ceil=hp.f0_ceil)
+        f0, timeaxis = pyworld.dio(wav, fs, frame_period=hp.frame_period)
         f0 = pyworld.stonemask(wav, f0, timeaxis, fs)
 
     if len(f0) > hp.max_T or text_len > hp.max_N:
