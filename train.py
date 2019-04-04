@@ -71,10 +71,10 @@ class Graph:
         if training:
             # Text2Mel
             # L1 loss
-            self.loss_features = tf.reduce_mean(tf.abs(self.Y - self.features))
+            self.loss_features = tf.losses.mean_squared_error(self.features, self.Y)
 
             # binary divergence loss
-            self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.features))
+            # self.loss_bd1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.Y_logits, labels=self.features))
 
             # guided_attention loss
             N = hp.max_N
@@ -86,10 +86,11 @@ class Graph:
             self.loss_att /= self.mask_sum
 
             # total loss
-            self.loss = self.loss_features + self.loss_bd1 + self.loss_att
+            # self.loss = self.loss_features + self.loss_bd1 + self.loss_att
+            self.loss = self.loss_features + self.loss_att
 
             tf.summary.scalar('train/loss_features', self.loss_features)
-            tf.summary.scalar('train/loss_bd1', self.loss_bd1)
+            # tf.summary.scalar('train/loss_bd1', self.loss_bd1)
             tf.summary.scalar('train/loss_att', self.loss_att)
             tf.summary.image('train/feature_gt', tf.expand_dims(tf.transpose(self.features[:1], [0, 2, 1]), -1))
             tf.summary.image('train/feature_hat', tf.expand_dims(tf.transpose(self.Y[:1], [0, 2, 1]), -1))
