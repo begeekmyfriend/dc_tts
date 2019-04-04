@@ -198,15 +198,15 @@ def AudioDec(R, training=True):
                         training=training,
                         scope="C_{}".format(i)); i += 1
     # mel_hats
-    logits = conv1d(tensor,
-                    filters=hp.n_mgc + hp.n_lf0 + hp.n_vuv + hp.n_bap,
-                    size=1,
-                    rate=1,
-                    padding="CAUSAL",
-                    dropout_rate=hp.dropout_rate,
-                    training=training,
-                    scope="C_{}".format(i)); i += 1
-    Y = tf.nn.sigmoid(logits) # mel_hats
+    Y = conv1d(tensor,
+               filters=hp.n_mgc + hp.n_lf0 + hp.n_vuv + hp.n_bap,
+               size=1,
+               rate=1,
+               padding="CAUSAL",
+               dropout_rate=hp.dropout_rate,
+               training=training,
+               scope="C_{}".format(i)); i += 1
+    logits = tf.nn.sigmoid(Y) # mel_hats
 
     return logits, Y
 
@@ -281,11 +281,11 @@ def SSRN(Y, training=True):
                         activation_fn=tf.nn.relu,
                         training=training,
                         scope="C_{}".format(i)); i += 1
-    logits = conv1d(tensor,
+    Z = conv1d(tensor,
                size=1,
                rate=1,
                dropout_rate=hp.dropout_rate,
                training=training,
                scope="C_{}".format(i))
-    Z = tf.nn.sigmoid(logits)
+    logits = tf.nn.sigmoid(Z)
     return logits, Z
